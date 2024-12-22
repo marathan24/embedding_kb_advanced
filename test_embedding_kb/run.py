@@ -89,14 +89,13 @@ class TestEmbeddingKB:
             raise ValueError(f"Invalid mode: {self.mode}")
         
     async def init(self, *args, **kwargs):
-        # node_client = Node(self.kb_node_url)
         table_name = self.kb_config['table_name']
         schema = self.kb_config['schema']
         node_client = Node(self.kb_node_url)
 
         # Create the table using psycopg2
         logger.info(f"Creating table {table_name}")
-        node_client.create_table(table_name, schema)
+        await node_client.create_table(table_name, schema)
 
         # Read PDF and process it
         logger.info("Processing PDFs")
@@ -109,7 +108,7 @@ class TestEmbeddingKB:
         # Add documents to the table
         logger.info("Adding documents to table")
         for doc in tqdm(all_documents):
-            node_client.add_row(table_name, doc)
+            await node_client.add_row(table_name, doc)
 
         return {"status": "success", "message": f"Successfully populated {table_name} table with {len(all_documents)} chunks"}
     
@@ -126,7 +125,7 @@ class TestEmbeddingKB:
             if 'embedding' not in doc:
                 embedding = self.embedder.embed_text(doc['text'])
                 doc['embedding'] = embedding
-            node_client.add_row(table_name, doc)
+            await node_client.add_row(table_name, doc)
 
         return {"status": "success", "message": f"Successfully added {len(self.input_schema.data)} chunks to table {table_name}"}
 
@@ -140,7 +139,7 @@ class TestEmbeddingKB:
         node_client = Node(self.kb_node_url)
 
         logger.info(f"Querying table {table_name} with query: {self.query}")
-        results = node_client.vector_search(
+        results = await node_client.vector_search(
             table_name=table_name,
             vector_column="embedding",
             query_vector=query_embedding,
