@@ -116,15 +116,22 @@ class TestEmbeddingKB:
         node_client = Node(self.kb_node_url)
         table_name = self.kb_config['table_name']
 
-        # make sure documents are either a list of dicts or a single dict
-        if not isinstance(self.input_schema.data, list):
-            self.input_schema.data = [self.input_schema.data]
+        data = json.loads(self.input_schema.data)
 
-        for doc in self.input_schema.data:
+        # make sure documents are either a list of dicts or a single dict
+        if not isinstance(data, list):
+            data = [data]
+
+        for doc in data:
             # embed the text if not already embedded
             if 'embedding' not in doc:
                 embedding = self.embedder.embed_text(doc['text'])
                 doc['embedding'] = embedding
+
+            # if id is not present, generate a random one
+            if 'id' not in doc:
+                doc['id'] = random.randint(1, 1000000)
+
             await node_client.add_row(table_name, doc)
 
         return {"status": "success", "message": f"Successfully added {len(self.input_schema.data)} chunks to table {table_name}"}
