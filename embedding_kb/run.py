@@ -36,12 +36,12 @@ class EmbeddingKB:
         await create(self.deployment)
         return {"status": "success", "message": f"Successfully populated {self.table_name} table"}
 
-    def _read_pdf(self, data_path) -> str:
+    def _read_pdf(self, pdf_file_paths) -> str:
         """Read a PDF file and return its text content"""
         # glob all pdfs in the data folder from pathlib
-        pdf_files = list(data_path.glob("*.pdf"))
+
         pdfs = []
-        for pdf_file in pdf_files:
+        for pdf_file in pdf_file_paths:
             text = ""
             with open(pdf_file, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
@@ -66,29 +66,36 @@ class EmbeddingKB:
             documents.append(doc)
         return documents
 
-    async def add_data(self, *args, **kwargs):
-        node_client = Node(self.kb_node_url)
-        table_name = self.kb_config['table_name']
+    async def add_data(self, input_data: Dict[str, Any], *args, **kwargs):
 
-        data = json.loads(self.input_schema.data)
+        file_path = Path(__file__).resolve()
+        pdf_file_path = file_path.parent / input_data["path"]
 
-        # make sure documents are either a list of dicts or a single dict
-        if not isinstance(data, list):
-            data = [data]
+        # Read PDF and process it
+        logger.info("Processing PDFs")
+        texts = self._read_pdf([pdf_file_path])
 
-        for doc in data:
-            # embed the text if not already embedded
-            if 'embedding' not in doc:
-                embedding = self.embedder.embed_text(doc['text'])
-                doc['embedding'] = embedding
+        all_documents = []
+        for i, text in enumerate(texts):
+            documents = await self._process_text(text, {"source": f"pdf_{i}"})
+            all_documents.extend(documents)
 
-            # if id is not present, generate a random one
-            if 'id' not in doc:
-                doc['id'] = random.randint(1, 1000000)
+        # Add documents to the table
+        logger.info("Adding documents to table")
+        for doc in tqdm(all_documents):
 
-            await node_client.add_row(table_name, doc)
+            create_row_request = CreateRowRequest(
+                storage_type=self.config['storage_type'],
+                path=self.table_name,
+                data=doc
+            )
 
-        return {"status": "success", "message": f"Successfully added {len(self.input_schema.data)} chunks to table {table_name}"}
+            # Add a row
+            create_row_result = await self.storage_provider.create(create_row_request)
+
+        logger.info(f"Add row result: {create_row_result}")
+
+        return {"status": "success", "message": f"Successfully added {input_data["path"]} to table {self.table_name}"}
 
     async def run_query(self, input_data: Dict[str, Any], *args, **kwargs):
         logger.info(f"Querying table {self.table_name} with query: {input_data['query']}")
@@ -106,14 +113,13 @@ class EmbeddingKB:
         read_storage_request = ReadStorageRequest(
             storage_type=self.config['storage_type'],
             path=self.table_name,
-            db_options=db_read_options
+            options=db_read_options
         )
 
         read_result = await self.storage_provider.read(read_storage_request)
         logger.info(f"Query results: {read_result}")
 
-        return read_result
-
+        return read_result[0]["text"].replace("\n", " ").strip()
 
 
 # TODO: Make it so that the create function is called when the kb/create endpoint is called
@@ -138,9 +144,11 @@ async def create(deployment: KBDeployment):
 
     create_table_result = await storage_provider.create(create_table_request)
 
+    pdf_file_paths = list(init_data_path.glob("*.pdf"))
+
     # Read PDF and process it
     logger.info("Processing PDFs")
-    texts = embedding_kb._read_pdf(init_data_path)
+    texts = embedding_kb._read_pdf(pdf_file_paths)
     all_documents = []
     for i, text in enumerate(texts):
         documents = await embedding_kb._process_text(text, {"source": f"pdf_{i}"})
@@ -206,15 +214,15 @@ if __name__ == "__main__":
         ),
         "add_data": InputSchema(
             function_name="add_data",
-            function_input_data={"data": "data/test.pdf"},
+            function_input_data={"path": "data/aiayn.pdf"},
         ),
     }
 
     module_run = KBRunInput(
-        inputs=inputs_dict["run_query"],
+        inputs=inputs_dict["add_data"],
         deployment=deployment,
         consumer_id=naptha.user.id,
     )
 
     result = asyncio.run(run(module_run))
-    print("Result:", result[0]["text"].replace("\n", " ").strip())
+    print("Result:", result)
