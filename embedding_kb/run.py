@@ -5,7 +5,6 @@ import PyPDF2
 from pathlib import Path
 from typing import Dict, Any, List
 from tqdm import tqdm
-from naptha_sdk.client.node import Node
 from naptha_sdk.schemas import KBDeployment, KBRunInput
 from naptha_sdk.storage.storage_provider import StorageProvider
 from naptha_sdk.storage.schemas import CreateTableRequest, CreateRowRequest, ReadStorageRequest, DatabaseReadOptions
