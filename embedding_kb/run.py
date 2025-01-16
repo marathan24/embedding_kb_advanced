@@ -156,9 +156,13 @@ async def create(deployment: KBDeployment):
 
     return {"status": "success", "message": f"Successfully populated {table_name} table with {len(all_documents)} chunks"}
 
-async def run(module_run: KBRunInput, *args, **kwargs):
+async def run(module_run: Dict, *args, **kwargs):
+    
     if not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY environment variable is not set")
+
+    module_run = KBRunInput(**module_run)
+    module_run.inputs = InputSchema(**module_run.inputs)
     
     logger.info(f"Module run: {module_run}")
 
@@ -200,11 +204,11 @@ if __name__ == "__main__":
     }
 
     module_run = KBRunInput(
-        inputs=inputs_dict["add_data"],
+        inputs=inputs_dict["init"].model_dump(),
         deployment=deployment,
         consumer_id=naptha.user.id,
         signature='xxx'
     )
 
-    result = asyncio.run(run(module_run))
+    result = asyncio.run(run(module_run.model_dump()))
     print("Result:", result)
