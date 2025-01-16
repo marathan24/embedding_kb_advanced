@@ -14,17 +14,19 @@
                 "embedding": {"type": "vector", "dimension": 1536},
                 "metadata": {"type": "jsonb"}
             },
-            "embedder": {
-                "model": "text-embedding-3-small",
-                "chunk_size": 1000,
-                "chunk_overlap": 200,
-                "separators": ["\n\n", "\n", ". ", " ", ""],
-                "embedding_dim": 1536
-            },
-            "retriever": {
-                "type": "vector",
-                "field": "embedding",
-                "k": 5
+            "options": {
+                "embedder": {
+                    "model": "text-embedding-3-small",
+                    "chunk_size": 1000,
+                    "chunk_overlap": 200,
+                    "separators": ["\n\n", "\n", ". ", " ", ""],
+                    "embedding_dim": 1536
+                },
+                "retriever": {
+                    "type": "vector",
+                    "field": "embedding",
+                    "k": 5
+                }
             }
         }
     }
