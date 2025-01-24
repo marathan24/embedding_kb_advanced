@@ -169,12 +169,12 @@ async def run(module_run: Dict, *args, **kwargs):
 
     embedding_kb = EmbeddingKB(module_run.deployment)
 
-    method = getattr(embedding_kb, module_run.inputs.function_name, None)
+    method = getattr(embedding_kb, module_run.inputs.func_name, None)
 
     if not method:
-        raise ValueError(f"Invalid function name: {module_run.inputs.function_name}")
+        raise ValueError(f"Invalid function name: {module_run.inputs.func_name}")
 
-    return await method(module_run.inputs.function_input_data)
+    return await method(module_run.inputs.func_input_data)
 
 
 if __name__ == "__main__":
@@ -190,16 +190,16 @@ if __name__ == "__main__":
 
     inputs_dict = {
         "init": {
-            "function_name": "init",
-            "function_input_data": None,
+            "func_name": "init",
+            "func_input_data": None,
         },
         "run_query": {
-            "function_name": "run_query",
-            "function_input_data": {"query": "what is attention?"},
+            "func_name": "run_query",
+            "func_input_data": {"query": "what is attention?"},
         },
         "add_data": {
-            "function_name": "add_data",
-            "function_input_data": {"path": "data/aiayn.pdf"},
+            "func_name": "add_data",
+            "func_input_data": {"path": "data/aiayn.pdf"},
         },
     }
 

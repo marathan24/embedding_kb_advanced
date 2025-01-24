@@ -11,15 +11,15 @@ naptha create kb:embedding_kb
 ### Initialize the content in the Knowledge Base
 
 ```bash
-naptha run kb:embedding_kb -p "function_name='init'"
+naptha run kb:embedding_kb -p "func_name='init'"
 ```
 
 ### Add to the Knowledge Base
 
 ```bash
 naptha run kb:embedding_kb -p '{
-    "function_name": "add_data",
-    "function_input_data": {"path": "data/aiayn.pdf"}
+    "func_name": "add_data",
+    "func_input_data": {"path": "data/aiayn.pdf"}
 }'
 ```
 
@@ -27,8 +27,8 @@ naptha run kb:embedding_kb -p '{
 
 ```bash
 naptha run kb:embedding_kb -p '{
-    "function_name": "run_query",
-    "function_input_data": {
+    "func_name": "run_query",
+    "func_input_data": {
         "query": "what is attention?"
     }
 }'
