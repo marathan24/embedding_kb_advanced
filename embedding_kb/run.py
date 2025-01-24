@@ -11,7 +11,8 @@ from naptha_sdk.storage.schemas import (
     CreateStorageRequest, ReadStorageRequest, StorageType,
     DatabaseReadOptions
 )
-from embedding_kb.schemas import InputSchema, EmbedderConfig
+from naptha_sdk.user import sign_consumer_id
+from embedding_kb.schemas import InputSchema
 from embedding_kb.embedder import MemoryEmbedder, RecursiveTextSplitter
 
 logger = logging.getLogger(__name__)
@@ -21,16 +22,16 @@ class EmbeddingKB:
         self.deployment = deployment
         self.config = self.deployment.config
         self.storage_provider = StorageProvider(self.deployment.node)
-        self.table_name = self.config.path
-        self.storage_type = StorageType.DATABASE
+        self.table_name = self.config.storage_config.path
+        self.storage_type = self.config.storage_config.storage_type
 
-        embedder_config = EmbedderConfig(**self.config.options["embedder"])
+        embedder_config = self.config.llm_config
 
         self.embedder = MemoryEmbedder(model=embedder_config.model)
         self.splitter = RecursiveTextSplitter(
-            chunk_size=embedder_config.chunk_size,
-            chunk_overlap=embedder_config.chunk_overlap,
-            separators=embedder_config.separators
+            chunk_size=embedder_config.options.chunk_size,
+            chunk_overlap=embedder_config.options.chunk_overlap,
+            separators=embedder_config.options.separators
         )
 
     async def init(self, *args, **kwargs):
@@ -89,15 +90,15 @@ class EmbeddingKB:
         return {"status": "success", "message": f"Successfully added {input_data['path']} to table {self.table_name}"}
 
     async def run_query(self, input_data: Dict[str, Any], *args, **kwargs):
-        logger.info(f"Querying table {self.table_name} with query: {input_data['query']}")
+        logger.info(f"Querying table {self.table_name} with query")
 
         query_embedding = self.embedder.embed_text(input_data['query'])
 
         db_read_options = DatabaseReadOptions(
             query_vector=query_embedding,
-            vector_col="embedding",
-            top_k=5,
-            include_similarity=True
+            vector_col=self.config.storage_config.options["vector_col"],
+            top_k=self.config.storage_config.options["top_k"],
+            include_similarity=self.config.storage_config.options["include_similarity"]
         )
 
         read_request = ReadStorageRequest(
@@ -118,8 +119,8 @@ async def create(deployment: KBDeployment):
     init_data_path = file_path.parent / "data"
 
     storage_provider = StorageProvider(deployment.node)
-    table_name = deployment.config.path
-    schema = deployment.config.schema
+    table_name = deployment.config.storage_config.path
+    schema = deployment.config.storage_config.storage_schema
 
     embedding_kb = EmbeddingKB(deployment)
 
@@ -181,7 +182,6 @@ if __name__ == "__main__":
     import os
     from naptha_sdk.client.naptha import Naptha
     from naptha_sdk.configs import setup_module_deployment
-    from naptha_sdk.schemas import KBRunInput
 
     naptha = Naptha()
 
@@ -189,26 +189,26 @@ if __name__ == "__main__":
 
 
     inputs_dict = {
-        "init": InputSchema(
-            function_name="init",
-            function_input_data=None,
-        ),
-        "run_query": InputSchema(
-            function_name="run_query",
-            function_input_data={"query": "what is attention?"},
-        ),
-        "add_data": InputSchema(
-            function_name="add_data",
-            function_input_data={"path": "data/aiayn.pdf"},
-        ),
+        "init": {
+            "function_name": "init",
+            "function_input_data": None,
+        },
+        "run_query": {
+            "function_name": "run_query",
+            "function_input_data": {"query": "what is attention?"},
+        },
+        "add_data": {
+            "function_name": "add_data",
+            "function_input_data": {"path": "data/aiayn.pdf"},
+        },
     }
 
-    module_run = KBRunInput(
-        inputs=inputs_dict["init"].model_dump(),
-        deployment=deployment,
-        consumer_id=naptha.user.id,
-        signature='xxx'
-    )
+    module_run = {
+        "inputs": inputs_dict["add_data"],
+        "deployment": deployment,
+        "consumer_id": naptha.user.id,
+        "signature": sign_consumer_id(naptha.user.id, os.getenv("PRIVATE_KEY"))
+    }
 
-    result = asyncio.run(run(module_run.model_dump()))
+    result = asyncio.run(run(module_run))
     print("Result:", result)
