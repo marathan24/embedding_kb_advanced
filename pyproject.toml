@@ -13,6 +13,9 @@ tqdm = "^4.67.1"
 pypdf2 = "^3.0.1"
 psycopg2-binary = "^2.9.10"
 openai = "^1.58.1"
+semchunk = "^3.0.1"
+numpy = "^2.2.2"
+tiktoken = "^0.8.0"
 
 [build-system]
 requires = ["poetry-core"]
