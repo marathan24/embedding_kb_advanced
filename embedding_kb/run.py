@@ -1,21 +1,35 @@
 import logging
 import os
 import random
-import PyPDF2
 from pathlib import Path
 from typing import Dict, Any, List
+
+import PyPDF2
+import asyncio
 from tqdm import tqdm
+
 from naptha_sdk.schemas import KBDeployment, KBRunInput
 from naptha_sdk.storage.storage_provider import StorageProvider
 from naptha_sdk.storage.schemas import (
-    CreateStorageRequest, ReadStorageRequest, StorageType,
-    DatabaseReadOptions
+    CreateStorageRequest,
+    ReadStorageRequest,
+    StorageType,
+    DatabaseReadOptions,
 )
 from naptha_sdk.user import sign_consumer_id
+
 from embedding_kb.schemas import InputSchema
-from embedding_kb.embedder import MemoryEmbedder, RecursiveTextSplitter
+from embedding_kb.embedder import MemoryEmbedder, SemChunkTextSplitter
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 
 class EmbeddingKB:
     def __init__(self, deployment: KBDeployment):
@@ -25,34 +39,43 @@ class EmbeddingKB:
         self.table_name = self.config.storage_config.path
         self.storage_type = self.config.storage_config.storage_type
 
-        embedder_config = self.config.llm_config
+        llm_config = self.config.llm_config
 
-        self.embedder = MemoryEmbedder(model=embedder_config.model)
-        self.splitter = RecursiveTextSplitter(
-            chunk_size=embedder_config.options.chunk_size,
-            chunk_overlap=embedder_config.options.chunk_overlap,
-            separators=embedder_config.options.separators
+        self.embedder = MemoryEmbedder(
+            model=llm_config.model,
+            chunk_size=llm_config.options.chunk_size,
+            chunk_overlap=llm_config.options.chunk_overlap
+        )
+
+        self.splitter = SemChunkTextSplitter(
+            chunk_size=llm_config.options.chunk_size,
+            chunk_overlap=llm_config.options.chunk_overlap
         )
 
     async def init(self, *args, **kwargs):
-        await create(self.deployment)
-        return {"status": "success", "message": f"Successfully populated {self.table_name} table"}
+        """Initialize the EmbeddingKB by creating the database table and populating it with initial data."""
+        response = await create(self.deployment)
+        return response
 
-    def _read_pdf(self, pdf_file_paths) -> str:
+    def _read_pdf(self, pdf_file_paths: List[Path]) -> List[str]:
+        """Read and extract text from a list of PDF files."""
         pdfs = []
         for pdf_file in pdf_file_paths:
             text = ""
             with open(pdf_file, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
                 for page in pdf_reader.pages:
-                    text += page.extract_text()
+                    extracted_text = page.extract_text()
+                    if extracted_text:
+                        text += extracted_text
             pdfs.append(text)
         return pdfs
 
     async def _process_text(self, text: str, metadata: Dict = None) -> List[Dict]:
+        """Split the text into chunks and generate embeddings for each chunk."""
         chunks = self.splitter.split_text(text)
         embeddings = self.embedder.embed_batch(chunks)
-        
+
         documents = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             doc = {
@@ -65,10 +88,11 @@ class EmbeddingKB:
         return documents
 
     async def add_data(self, input_data: Dict[str, Any], *args, **kwargs):
+        """Add data from a PDF file to the embedding knowledge base."""
         file_path = Path(__file__).resolve()
         pdf_file_path = file_path.parent / input_data["path"]
 
-        logger.info("Processing PDFs")
+        logger.info(f"Processing PDF: {pdf_file_path}")
         texts = self._read_pdf([pdf_file_path])
 
         all_documents = []
@@ -76,8 +100,8 @@ class EmbeddingKB:
             documents = await self._process_text(text, {"source": f"pdf_{i}"})
             all_documents.extend(documents)
 
-        logger.info("Adding documents to table")
-        for doc in tqdm(all_documents):
+        logger.info("Adding documents to the database table")
+        for doc in tqdm(all_documents, desc="Adding Documents"):
             create_request = CreateStorageRequest(
                 storage_type=StorageType.DATABASE,
                 path=self.table_name,
@@ -87,10 +111,15 @@ class EmbeddingKB:
             )
             await self.storage_provider.execute(create_request)
 
-        return {"status": "success", "message": f"Successfully added {input_data['path']} to table {self.table_name}"}
+        logger.info(f"Successfully added {input_data['path']} to table {self.table_name}")
+        return {
+            "status": "success",
+            "message": f"Successfully added {input_data['path']} to table {self.table_name}"
+        }
 
     async def run_query(self, input_data: Dict[str, Any], *args, **kwargs):
-        logger.info(f"Querying table {self.table_name} with query")
+        """Run a query against the embedding knowledge base and retrieve the most relevant text."""
+        logger.info(f"Running query on table {self.table_name}: {input_data['query']}")
 
         query_embedding = self.embedder.embed_text(input_data['query'])
 
@@ -109,12 +138,18 @@ class EmbeddingKB:
 
         read_result = await self.storage_provider.execute(read_request)
         results = read_result.data if hasattr(read_result, 'data') else read_result
-        
+
         if isinstance(results, list) and results:
-            return results[0]["text"].replace("\n", " ").strip()
+            top_result = results[0]
+            logger.info(f"Top result: {top_result['text']}")
+            return top_result["text"].replace("\n", " ").strip()
+
+        logger.warning("No results found for the query")
         return ""
 
+
 async def create(deployment: KBDeployment):
+    """Create the database table and populate it with initial PDF data."""
     file_path = Path(__file__).resolve()
     init_data_path = file_path.parent / "data"
 
@@ -124,7 +159,7 @@ async def create(deployment: KBDeployment):
 
     embedding_kb = EmbeddingKB(deployment)
 
-    logger.info(f"Creating database table {table_name} with schema {schema}")
+    logger.info(f"Creating database table '{table_name}' with schema: {schema}")
 
     create_table_request = CreateStorageRequest(
         storage_type=StorageType.DATABASE,
@@ -136,16 +171,18 @@ async def create(deployment: KBDeployment):
     await storage_provider.execute(create_table_request)
 
     pdf_file_paths = list(init_data_path.glob("*.pdf"))
+    if not pdf_file_paths:
+        logger.warning("No PDF files found to process during initialization.")
 
-    logger.info("Processing PDFs")
+    logger.info("Processing PDFs for initialization")
     texts = embedding_kb._read_pdf(pdf_file_paths)
     all_documents = []
     for i, text in enumerate(texts):
         documents = await embedding_kb._process_text(text, {"source": f"pdf_{i}"})
         all_documents.extend(documents)
 
-    logger.info("Adding documents to table")
-    for doc in tqdm(all_documents):
+    logger.info("Adding documents to the database table")
+    for doc in tqdm(all_documents, desc="Adding Initial Documents"):
         create_row_request = CreateStorageRequest(
             storage_type=StorageType.DATABASE,
             path=table_name,
@@ -155,16 +192,21 @@ async def create(deployment: KBDeployment):
         )
         await storage_provider.execute(create_row_request)
 
-    return {"status": "success", "message": f"Successfully populated {table_name} table with {len(all_documents)} chunks"}
+    logger.info(f"Successfully populated '{table_name}' table with {len(all_documents)} chunks")
+    return {
+        "status": "success",
+        "message": f"Successfully populated '{table_name}' table with {len(all_documents)} chunks"
+    }
+
 
 async def run(module_run: Dict, *args, **kwargs):
-    
+    """Entry point for running module functions based on the provided input."""
     if not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY environment variable is not set")
 
     module_run = KBRunInput(**module_run)
     module_run.inputs = InputSchema(**module_run.inputs)
-    
+
     logger.info(f"Module run: {module_run}")
 
     embedding_kb = EmbeddingKB(module_run.deployment)
@@ -183,32 +225,62 @@ if __name__ == "__main__":
     from naptha_sdk.client.naptha import Naptha
     from naptha_sdk.configs import setup_module_deployment
 
-    naptha = Naptha()
+    main_logger = logging.getLogger("Main")
+    main_logger.setLevel(logging.INFO)
+    main_logger.addHandler(handler)
 
-    deployment = asyncio.run(setup_module_deployment("kb", "embedding_kb/configs/deployment.json", node_url = os.getenv("NODE_URL")))
+    async def main():
+        naptha = Naptha()
 
+        deployment = await setup_module_deployment(
+            "kb",
+            "embedding_kb/configs/deployment.json",
+            node_url=os.getenv("NODE_URL")
+        )
 
-    inputs_dict = {
-        "init": {
-            "func_name": "init",
-            "func_input_data": None,
-        },
-        "run_query": {
-            "func_name": "run_query",
-            "func_input_data": {"query": "what is attention?"},
-        },
-        "add_data": {
-            "func_name": "add_data",
-            "func_input_data": {"path": "data/aiayn.pdf"},
-        },
-    }
+        inputs_dict = {
+            "init": {
+                "func_name": "init",
+                "func_input_data": None,
+            },
+            "run_query": {
+                "func_name": "run_query",
+                "func_input_data": {"query": "what is attention?"},
+            },
+            "add_data": {
+                "func_name": "add_data",
+                "func_input_data": {"path": "data/aiayn.pdf"},
+            },
+        }
 
-    module_run = {
-        "inputs": inputs_dict["add_data"],
-        "deployment": deployment,
-        "consumer_id": naptha.user.id,
-        "signature": sign_consumer_id(naptha.user.id, os.getenv("PRIVATE_KEY"))
-    }
+        init_run = {
+            "inputs": inputs_dict["init"],
+            "deployment": deployment,
+            "consumer_id": naptha.user.id,
+            "signature": sign_consumer_id(naptha.user.id, os.getenv("PRIVATE_KEY"))
+        }
 
-    result = asyncio.run(run(module_run))
-    print("Result:", result)
+        init_result = await run(init_run)
+        main_logger.info("Initialization Result: %s", init_result)
+
+        add_data_run = {
+            "inputs": inputs_dict["add_data"],
+            "deployment": deployment,
+            "consumer_id": naptha.user.id,
+            "signature": sign_consumer_id(naptha.user.id, os.getenv("PRIVATE_KEY"))
+        }
+
+        add_data_result = await run(add_data_run)
+        main_logger.info("Add Data Result: %s", add_data_result)
+
+        query_run = {
+            "inputs": inputs_dict["run_query"],
+            "deployment": deployment,
+            "consumer_id": naptha.user.id,
+            "signature": sign_consumer_id(naptha.user.id, os.getenv("PRIVATE_KEY"))
+        }
+
+        query_result = await run(query_run)
+        main_logger.info("Query Result: %s", query_result)
+
+    asyncio.run(main())
