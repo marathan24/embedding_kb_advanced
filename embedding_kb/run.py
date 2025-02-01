@@ -147,6 +147,22 @@ class EmbeddingKB:
         logger.warning("No results found for the query")
         return ""
 
+# Below is the code to run locally and test it as the above code is giving some errors when run locally using node.naptha.ai
+
+# async def run_query(self, input_data: Dict[str, Any], *args, **kwargs):
+#     """Query the knowledge base by paper title"""
+#     logger.info(f"Querying table {self.table_name} with query: {input_data['query']}")
+    
+#     read_result = await self.storage_provider.execute(
+#         ReadStorageRequest(
+#             storage_type=self.storage_type,
+#             path=self.table_name,
+#             options={"condition": {"title": input_data["query"]}}
+#         )
+#     )
+    
+#     return {"status": "success", "message": f"Query results: {read_result}"}
+
 
 async def create(deployment: KBDeployment):
     """Create the database table and populate it with initial PDF data."""
@@ -273,14 +289,14 @@ if __name__ == "__main__":
         add_data_result = await run(add_data_run)
         main_logger.info("Add Data Result: %s", add_data_result)
 
-        query_run = {
-            "inputs": inputs_dict["run_query"],
-            "deployment": deployment,
-            "consumer_id": naptha.user.id,
-            "signature": sign_consumer_id(naptha.user.id, os.getenv("PRIVATE_KEY"))
-        }
+        # query_run = {
+        #     "inputs": inputs_dict["run_query"],
+        #     "deployment": deployment,
+        #     "consumer_id": naptha.user.id,
+        #     "signature": sign_consumer_id(naptha.user.id, os.getenv("PRIVATE_KEY"))
+        # }
 
-        query_result = await run(query_run)
-        main_logger.info("Query Result: %s", query_result)
+        # query_result = await run(query_run)
+        # main_logger.info("Query Result: %s", query_result)
 
     asyncio.run(main())
