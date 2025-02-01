@@ -4,7 +4,9 @@ import random
 import numpy as np
 from openai import OpenAI
 import semchunk
+import logging
 
+logger = logging.getLogger(__name__)
 class MemoryEmbedder:
     def __init__(self, model: str = "text-embedding-3-small", chunk_size: int = 2000, chunk_overlap: int = 200):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -38,5 +40,6 @@ class SemChunkTextSplitter:
     def split_text(self, text: str) -> List[str]:
         """Split text using semchunk"""
         # Adjusted to handle the correct number of return values
-        chunks = self.chunker(text, offsets=True)
+        chunks, offsets = self.chunker(text, offsets=True)
+        logger.info("The type of chunks is : ", type(chunks))
         return chunks
