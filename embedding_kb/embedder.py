@@ -1,6 +1,5 @@
-from typing import List, Optional
+from typing import List
 import os
-import random
 import numpy as np
 from openai import OpenAI
 import semchunk
