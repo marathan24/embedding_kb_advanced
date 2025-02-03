@@ -1,13 +1,13 @@
 [
     {
         "name": "kb_deployment_1",
-        "module": {"name": "embedding_kb"},
+        "module": {"name": "embedding_kb_advanced"},
         "node": {"ip": "localhost"},
         "config": {
             "llm_config": {"config_name": "embedding_model_1"},
             "storage_config": {
                 "storage_type": "db",
-                "path": "embedding_kb",
+                "path": "embedding_kb_advanced",
                 "storage_schema": {
                     "id": {"type": "INTEGER", "primary_key": true},
                     "text": {"type": "TEXT"},
