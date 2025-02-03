@@ -4,7 +4,6 @@ from typing import Literal, Optional, Dict, Any, List
 class InputSchema(BaseModel):
     func_name: Literal["init", "run_query", "add_data"]
     func_input_data: Optional[Dict[str, Any]] = None
-    input_dir: Optional[str] = None
 
 class RetrieverConfig(BaseModel):
     type: str = "vector"
