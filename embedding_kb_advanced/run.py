@@ -18,8 +18,8 @@ from naptha_sdk.storage.schemas import (
 )
 from naptha_sdk.user import sign_consumer_id
 
-from embedding_kb.schemas import InputSchema
-from embedding_kb.embedder import MemoryEmbedder, SemChunkTextSplitter
+from embedding_kb_advanced.schemas import InputSchema
+from embedding_kb_advanced.embedder import MemoryEmbedder, SemChunkTextSplitter
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
