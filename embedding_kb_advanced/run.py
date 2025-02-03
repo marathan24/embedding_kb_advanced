@@ -87,10 +87,14 @@ class EmbeddingKB:
             documents.append(doc)
         return documents
 
-    async def add_data(self, input_data: Dict[str, Any], *args, **kwargs):
+    async def add_data(self, input_data: Dict[str, Any], input_dir: str = None, *args, **kwargs):
         """Add data from a PDF file to the embedding knowledge base."""
         file_path = Path(__file__).resolve()
-        pdf_file_path = file_path.parent / input_data["path"]
+
+        if input_data["path"].startswith("data/"):
+            pdf_file_path = file_path.parent / input_data["path"]
+        else:
+            pdf_file_path = input_dir / input_data["path"]
 
         logger.info(f"Processing PDF: {pdf_file_path}")
         texts = self._read_pdf([pdf_file_path])
@@ -220,6 +224,11 @@ async def run(module_run: Dict, *args, **kwargs):
     if not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY environment variable is not set")
 
+    try:
+        logger.info(os.getenv("BASE_OUTPUT_DIR"))
+    except Exception as e:
+        logger.info(e)
+
     module_run = KBRunInput(**module_run)
     module_run.inputs = InputSchema(**module_run.inputs)
 
@@ -232,7 +241,7 @@ async def run(module_run: Dict, *args, **kwargs):
     if not method:
         raise ValueError(f"Invalid function name: {module_run.inputs.func_name}")
 
-    return await method(module_run.inputs.func_input_data)
+    return await method(module_run.inputs.func_input_data, input_dir=module_run.inputs.input_dir)
 
 
 if __name__ == "__main__":
